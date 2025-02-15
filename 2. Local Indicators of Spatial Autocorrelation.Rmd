@@ -1,0 +1,101 @@
+---
+title: "2. Local Indicators of Spatial Autocorrelation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+lisaRslt <- spdep::localmoran(nycDat$UNEMP_RATE, 
+                              nycNbList, 
+                              zero.policy = TRUE, 
+                              na.action = na.omit)
+```
+
+```{r}
+dim(nycDat) 
+dim(lisaRslt) 
+```
+
+```{r}
+head(lisaRslt)
+```
+
+```{r}
+significanceLevel <- 0.05 # 95% confidence
+
+meanVal <- mean(nycDat$UNEMP_RATE)
+
+lisaRslt %<>% tibble::as_tibble() %>%
+  magrittr::set_colnames(c("Ii","E.Ii","Var.Ii","Z.Ii","Pr(z > 0)")) %>%
+  dplyr::mutate(coType = dplyr::case_when(  # CoType - define Cluster/outliers types for each spatial feature in data, compare with mean value 
+    `Pr(z > 0)` > 0.05 ~ "Insignificant",
+    `Pr(z > 0)` <= 0.05 & Ii > 0 & nycDat$UNEMP_RATE >= meanVal ~ "HH",
+    `Pr(z > 0)` <= 0.05 & Ii > 0 & nycDat$UNEMP_RATE < meanVal ~ "LL",
+    `Pr(z > 0)` <= 0.05 & Ii < 0 & nycDat$UNEMP_RATE >= meanVal ~ "HL",
+    `Pr(z > 0)` <= 0.05 & Ii < 0 & nycDat$UNEMP_RATE < meanVal ~ "LH"
+  ))
+```
+
+```{r}
+nycDat$coType <- lisaRslt$coType %>% tidyr::replace_na("Insignificant")
+```
+
+```{r}
+p1 <- ggplot(nycDat) +
+  geom_sf(aes(fill=coType),color = 'lightgrey') +
+  scale_fill_manual(values = c('red','brown','NA','blue','cyan'), name='Clusters & \nOutliers') +
+  labs(title = "LISA Clusters: Unemployment in NYC at Census Tract Level") +
+  theme_minimal()
+
+p1
+```
+
+For futher analysis, identify  local clusters (hotspots, coldspots) & outliers
+
+```{r}
+# Define this as a function for 'plotCOType()"
+
+plotCOType <- function(varName, titleText, cols=1:5) {
+  varVals <- nycDat[[varName]] %>% as.character() %>% as.numeric()
+  lisaRslt <- spdep::localmoran(varVals, nycNbList, 
+                                zero.policy = TRUE, na.action = na.exclude)
+  significanceLevel <- 0.05; # 95% confidence
+  meanVal <- mean(varVals, na.rm=TRUE);
+  
+  lisaRslt %<>% tibble::as_tibble() %>%
+    magrittr::set_colnames(c("Ii","E.Ii","Var.Ii","Z.Ii","Pr(z > 0)")) %>%
+    dplyr::mutate(coType = dplyr::case_when(
+      `Pr(z > 0)` > 0.05 ~ "Insignificant",
+      `Pr(z > 0)` <= 0.05 & Ii >= 0 & varVals >= meanVal ~ "HH",
+      `Pr(z > 0)` <= 0.05 & Ii >= 0 & varVals < meanVal ~ "LL",
+      `Pr(z > 0)` <= 0.05 & Ii < 0 & varVals >= meanVal ~ "HL",
+      `Pr(z > 0)` <= 0.05 & Ii < 0 & varVals < meanVal ~ "LH"
+    ))
+  
+  # Now add this coType to original sf data
+  nycDat$coType <- lisaRslt$coType %>% tidyr::replace_na("Insignificant")
+  
+  ggplot(nycDat) +
+    geom_sf(aes(fill=coType),color = 'lightgrey') +
+    scale_fill_manual(values = c('red','brown','NA','blue','cyan')[cols], name='Clusters & \nOutliers') +
+    labs(title = titleText)
+}
+```
+
+```{r}
+p2 <- plotCOType('medianinco', "Median Household Income at Census Tract Level") # using varibale "medianinco"
+p2 
+```
+
+```{r}
+p3 <- plotCOType('asian', 'Asian Population at Census Tract Level', c(1,3,4,5)) 
+p3
+```
+
+```{r}
+gridExtra::grid.arrange(p1, p2, p3, ncol = 3) # Arrange All Plots in a Grid Layout for Comparison
+```
+

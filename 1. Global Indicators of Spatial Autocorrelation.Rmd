@@ -39,6 +39,8 @@ plot(nycDat['popunemplo'],
 mapview::mapview(nycDat['popunemplo'])
 ```
 
+# NYC 
+
 ```{r}
 nycNbList <- nycDat %>% 
   spdep::poly2nb() %>%    # spdep::poly2nb produces neighboring relationships
@@ -59,29 +61,42 @@ spdep::moran.plot(nycDat$UNEMP_RATE,
                   pch=20)
 ```
 
+# Zoom in Brooklyn 
+
+First, preparing data for Brooklyn 
+
 ```{r}
-# Selecting Brooklyn only 
-
 brklnDat <- nycDat %>% dplyr::filter(boroname == 'Brooklyn') 
+```
 
+```{r}
 brklnDat <- sf::st_as_sf(brklnDat)
-
 row.names(brklnDat) <- as.character(brklnDat$cartodb_id)
 
 nb <- spdep::poly2nb(brklnDat, row.names = brklnDat$cartodb_id, snap = 1e-5) 
-
 table(card(nb))
+```
 
+```{r}
 plot(st_geometry(brklnDat), border="grey")
+```
 
+```{r}
 plot(nb, st_coordinates(st_centroid(brklnDat)), add=TRUE, col="red")
+```
 
+```{r}
 coords <- st_centroid(st_geometry(brklnDat))
+```
 
+```{r}
 nb <- spdep::knn2nb(spdep::knearneigh(coords, k = 4))  # Adjust k as needed
-
 listw <- spdep::nb2listw(nb, zero.policy = TRUE)
+```
 
+Second, conduct moran test 
+
+```{r}
 spdep::moran.plot(brklnDat$UNEMP_RATE, 
                   listw, 
                   zero.policy = TRUE, 
@@ -89,3 +104,4 @@ spdep::moran.plot(brklnDat$UNEMP_RATE,
                   ylab = 'Lagged Unemployment Rate (of Neighbours)',
                   pch = 20)
 ```
+
