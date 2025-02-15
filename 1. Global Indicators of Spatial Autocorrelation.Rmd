@@ -1,0 +1,91 @@
+---
+title: '1. Global Indicators of Spatial Autocorrelation'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+nycDat <- sf::st_read('./data/nyctract_acs/NYC_Tract_ACS2008_12.shp')
+
+# Set the CRS ID
+sf::st_crs(nycDat) # check 
+sf::st_crs(nycDat) <- 4326;
+sf::st_crs(nycDat) # re-check  
+
+# EPSG:4326, which corresponds to the WGS 84 geographic coordinate system (longitude-latitude).
+# EPSG:4326 (WGS 84) is commonly used in GPS and web mapping applications.
+```
+
+```{r}
+# Check data
+head(nycDat)
+str(nycDat)
+names(nycDat)
+print(nycDat)
+```
+
+```{r}
+plot(nycDat['popunemplo'], 
+     graticule= sf::st_crs(4326), 
+     main='Total Unmployment', 
+     breaks="jenks", 
+     axes=TRUE)
+```
+
+```{r}
+mapview::mapview(nycDat['popunemplo'])
+```
+
+```{r}
+nycNbList <- nycDat %>% 
+  spdep::poly2nb() %>%    # spdep::poly2nb produces neighboring relationships
+  spdep::nb2listw(zero.policy = TRUE) # spdep::nb2listw turns relationships into weights
+```
+
+```{r}
+nycNbList %>%
+  spdep::moran.test(nycDat$UNEMP_RATE, ., zero.policy = TRUE)
+```
+
+```{r}
+spdep::moran.plot(nycDat$UNEMP_RATE, 
+                  nycNbList, 
+                  zero.policy = TRUE, 
+                  xlab = 'Unemployment Rate at Census',
+                  ylab = 'Lagged Unemployment Rate (of Neighbors)',
+                  pch=20)
+```
+
+```{r}
+# Selecting Brooklyn only 
+
+brklnDat <- nycDat %>% dplyr::filter(boroname == 'Brooklyn') 
+
+brklnDat <- sf::st_as_sf(brklnDat)
+
+row.names(brklnDat) <- as.character(brklnDat$cartodb_id)
+
+nb <- spdep::poly2nb(brklnDat, row.names = brklnDat$cartodb_id, snap = 1e-5) 
+
+table(card(nb))
+
+plot(st_geometry(brklnDat), border="grey")
+
+plot(nb, st_coordinates(st_centroid(brklnDat)), add=TRUE, col="red")
+
+coords <- st_centroid(st_geometry(brklnDat))
+
+nb <- spdep::knn2nb(spdep::knearneigh(coords, k = 4))  # Adjust k as needed
+
+listw <- spdep::nb2listw(nb, zero.policy = TRUE)
+
+spdep::moran.plot(brklnDat$UNEMP_RATE, 
+                  listw, 
+                  zero.policy = TRUE, 
+                  xlab = 'Unemployment Rate at Census Level in Brooklyn',
+                  ylab = 'Lagged Unemployment Rate (of Neighbours)',
+                  pch = 20)
+```
