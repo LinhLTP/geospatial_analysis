@@ -7,6 +7,12 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Objective
+
+The method is applied to New York City (NYC) data to assess the spatial autocorrelation of unemployment rates. The same approach is then adapted to focus on a specific borough (Brooklyn) to see if similar patterns exist at a local scale.
+
+## Dataset  
+
 ```{r}
 nycDat <- sf::st_read('./data/nyctract_acs/NYC_Tract_ACS2008_12.shp')
 
@@ -24,22 +30,33 @@ sf::st_crs(nycDat) # re-check
 head(nycDat)
 str(nycDat)
 names(nycDat)
-print(nycDat)
 ```
 
 ```{r}
 plot(nycDat['popunemplo'], 
-     graticule= sf::st_crs(4326), 
-     main='Total Unmployment', 
-     breaks="jenks", 
-     axes=TRUE)
+     graticule = sf::st_crs(4326), 
+     main = 'Total Unemployment', 
+     breaks = "jenks", 
+     axes = TRUE)
 ```
 
 ```{r}
 mapview::mapview(nycDat['popunemplo'])
 ```
 
-# NYC 
+```{r}
+# Create a ggplot2 map using sf
+g1 <- ggplot() + 
+  geom_sf(data = nycDat, aes(fill = popunemplo)) +
+  scale_fill_viridis_c(option = "magma") +  # or any other colour scale
+  labs(title = "Total Unemployment") +
+  theme_void()
+
+ggsave("./plot/global indicator/totun.png", plot = g1, 
+       width = 10, height = 6, dpi = 300)
+```
+
+## NYC 
 
 ```{r}
 nycNbList <- nycDat %>% 
@@ -49,7 +66,9 @@ nycNbList <- nycDat %>%
 
 ```{r}
 nycNbList %>%
-  spdep::moran.test(nycDat$UNEMP_RATE, ., zero.policy = TRUE)
+  spdep::moran.test(nycDat$UNEMP_RATE, 
+                    ., 
+                    zero.policy = TRUE)
 ```
 
 ```{r}
@@ -61,7 +80,7 @@ spdep::moran.plot(nycDat$UNEMP_RATE,
                   pch=20)
 ```
 
-# Zoom in Brooklyn 
+# Brooklyn 
 
 First, preparing data for Brooklyn 
 
@@ -72,16 +91,15 @@ brklnDat <- nycDat %>% dplyr::filter(boroname == 'Brooklyn')
 ```{r}
 brklnDat <- sf::st_as_sf(brklnDat)
 row.names(brklnDat) <- as.character(brklnDat$cartodb_id)
+```
 
+```{r}
 nb <- spdep::poly2nb(brklnDat, row.names = brklnDat$cartodb_id, snap = 1e-5) 
 table(card(nb))
 ```
 
 ```{r}
 plot(st_geometry(brklnDat), border="grey")
-```
-
-```{r}
 plot(nb, st_coordinates(st_centroid(brklnDat)), add=TRUE, col="red")
 ```
 
@@ -97,11 +115,32 @@ listw <- spdep::nb2listw(nb, zero.policy = TRUE)
 Second, conduct moran test 
 
 ```{r}
-spdep::moran.plot(brklnDat$UNEMP_RATE, 
-                  listw, 
-                  zero.policy = TRUE, 
-                  xlab = 'Unemployment Rate at Census Level in Brooklyn',
-                  ylab = 'Lagged Unemployment Rate (of Neighbours)',
-                  pch = 20)
+spdep::moran.plot(
+  brklnDat$UNEMP_RATE,    # variable of interest
+  listw,                  # spatial weights list
+  zero.policy = TRUE,     # handle tracts without neighbours, if any
+  xlab = "Unemployment Rate at Census Level in Brooklyn",
+  ylab = "Lagged Unemployment Rate (of Neighbours)",
+  pch = 20                # plotting character (solid circle)
+)
+```
+
+```{r}
+# To save the plot 
+# Open a PNG graphics device, specifying filename, dimensions, and resolution
+png("./plot/global indicator/moran_plot_brkln.png", width = 800, height = 600, res = 150)
+
+# Create the Moran scatterplot
+spdep::moran.plot(
+  brklnDat$UNEMP_RATE,    # variable of interest (Brooklyn's unemployment rate)
+  listw,                  # spatial weights list (from knn2nb or poly2nb)
+  zero.policy = TRUE,     # handles regions without neighbours, if any
+  xlab = "Unemployment Rate at Census Level in Brooklyn",
+  ylab = "Lagged Unemployment Rate (of Neighbours)",
+  pch = 20                # solid circle points
+)
+
+# Close the graphics device, saving the plot to the file
+dev.off()
 ```
 

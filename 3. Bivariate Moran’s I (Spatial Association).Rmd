@@ -9,7 +9,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Objective
 
-Bivariate Moran’s I is used to analyse the spatial association between `unemployment rates` and `struggling populations` (low-income groups) in New York City. This helps identify patterns of **socio-economic disparities**.
+While it is very useful to examine the spatial autocorrelation of one single variable globally and locally, more often we are wondering if one variable x is spatially associated with another variable y in its spatial neighbors. For example, the presence of a metro is very likely to reduce the travel time of the block where the metro is located. But how does the presence of the metro influence neighboring blocks? With bivariate local Moran’s I, the spatial association of the presence of metro and the travel time in neighboring blocks can be tested.
+
+Within this test, Bivariate Moran’s I is used to analyse the spatial association between `unemployment rates` and `struggling populations` (low-income groups) in New York City. This helps identify patterns of **socio-economic disparities**.
 
 ## Global Bivariate Moran’s I: Overall Spatial Association
 

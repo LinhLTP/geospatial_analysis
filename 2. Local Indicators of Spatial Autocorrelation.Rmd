@@ -7,8 +7,21 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Objective 
+
+The method is applied to New York City census tract data. For instance, the unemployment rate is analysed using LISA to identify which tracts are part of significant clusters (e.g. high unemployment surrounded by high unemployment) or outliers (e.g. low unemployment in a generally high unemployment area).
+
+LISA can help identify clusters of high or low values as well as outliers that are surrounded by opposite values. As analysed with Global Indicators of Spatial Autocorrelation (look at Moran'I Plot), LISA could identify: 
+- High-High (HH) clusters – areas with high values surrounded by high values (hotspots).
+- Low-Low (LL) clusters – areas with low values surrounded by low values (coldspots).
+- High-Low (HL) outliers – high values surrounded by low values.
+- Low-High (LH) outliers – low values surrounded by high values.
+- Insignificant areas – no significant spatial patterns.
+
+## LISA  
+
 ```{r}
-lisaRslt <- spdep::localmoran(nycDat$UNEMP_RATE, 
+lisaRslt <- spdep::localmoran(nycDat$UNEMP_RATE, # localmoran 
                               nycNbList, 
                               zero.policy = TRUE, 
                               na.action = na.omit)
@@ -49,11 +62,13 @@ p1 <- ggplot(nycDat) +
   scale_fill_manual(values = c('red','brown','NA','blue','cyan'), name='Clusters & \nOutliers') +
   labs(title = "LISA Clusters: Unemployment in NYC at Census Tract Level") +
   theme_minimal()
-
-p1
 ```
 
-For futher analysis, identify  local clusters (hotspots, coldspots) & outliers
+```{r}
+ggsave("./plot/local indicator/local indicator_nyc.png", plot = p2, width = 10, height = 6, dpi = 300)
+```
+
+## Local clusters (hotspots, coldspots) & outliers
 
 ```{r}
 # Define this as a function for 'plotCOType()"
@@ -75,7 +90,7 @@ plotCOType <- function(varName, titleText, cols=1:5) {
       `Pr(z > 0)` <= 0.05 & Ii < 0 & varVals < meanVal ~ "LH"
     ))
   
-  # Now add this coType to original sf data
+  # add this coType to original sf data
   nycDat$coType <- lisaRslt$coType %>% tidyr::replace_na("Insignificant")
   
   ggplot(nycDat) +
@@ -87,15 +102,20 @@ plotCOType <- function(varName, titleText, cols=1:5) {
 
 ```{r}
 p2 <- plotCOType('medianinco', "Median Household Income at Census Tract Level") # using varibale "medianinco"
-p2 
+```
+
+```{r}
+ggsave("./plot/local indicator/medianinco_nyc.png", plot = p2, width = 10, height = 6, dpi = 300)
 ```
 
 ```{r}
 p3 <- plotCOType('asian', 'Asian Population at Census Tract Level', c(1,3,4,5)) 
-p3
 ```
 
 ```{r}
-gridExtra::grid.arrange(p1, p2, p3, ncol = 3) # Arrange All Plots in a Grid Layout for Comparison
+ggsave("./plot/local indicator/asian_nyc.png", plot = p3, width = 10, height = 6, dpi = 300)
 ```
 
+```{r}
+gridExtra::grid.arrange(p1, p2, ncol = 2) # Arrange All Plots in a Grid Layout for Comparison
+```
