@@ -1,0 +1,87 @@
+---
+title: '3. Bivariate Moran’s I (Spatial Association)'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective
+
+Bivariate Moran’s I is used to analyse the **spatial association** between `unemployment rates` and `struggling populations` (low-income groups) in New York City. This helps identify patterns of **socio-economic disparities**.
+
+## Global Bivariate Moran’s I: Overall Spatial Association
+
+```{r warning=FALSE}
+# Creates a spatial weight matrix based on the nearest neighbour
+nycNearestNBList <- knn2nb(knearneigh(nycDat %>% sf::st_point_on_surface(), k=1)) %>% 
+                    spdep::nb2listw() 
+```
+
+```{r}
+# Computes Bivariate Moran’s I for unemployment rate (datX) and struggling population ratio (datY)
+moranBVboot <- spdep::moran_bv(x = datX <- nycDat$UNEMP_RATE, 
+                               y = datY <- (nycDat$struggling/(1+nycDat$poptot)) %>% as.numeric(), 
+                               listw = nycNearestNBList, 
+                               nsim = 500) # run 500 Monte Carlo simulations to assess significance
+```
+
+```{r}
+moranBVboot$t0 
+```
+
+```{r}
+boot::boot.ci(moranBVboot, conf=c(0.99, 0.95, 0.9), type="basic")
+```
+
+```{r}
+plot(moranBVboot)
+```
+
+## Local Bivariate Moran’s I for each spatial unit (Cluster)
+
+```{r}
+localMoranBV <- spdep::localmoran_bv(x = datX, 
+                                     y = datY, 
+                                     listw = nycNearestNBList, 
+                                     nsim = 500) %>% as.data.frame()
+```
+
+```{r}
+meanVal <- nycNearestNBList %>% listw2mat() %*% scale(datY) %>% as.vector()
+significanceLevel <- 0.05 
+```
+
+```{r}
+localMoranBV %<>% tibble::as_tibble() %>%
+  magrittr::set_colnames(c("Ibvi","E.Ibvi","Var.Ibvi","Z.Ibvi","P", "PSim", "PFoldedSim")) %>%
+  dplyr::mutate(lmbvType = dplyr::case_when(
+    `PSim` > 0.05 ~ "Insignificant",
+    `PSim` <= 0.05 & Ibvi >= 0 & datY >= meanVal ~ "HH",
+    `PSim` <= 0.05 & Ibvi >= 0 & datY < meanVal ~ "LL",
+    `PSim` <= 0.05 & Ibvi < 0 & datY >= meanVal ~ "HL",
+    `PSim` <= 0.05 & Ibvi < 0 & datY < meanVal ~ "LH"
+  ))
+```
+
+```{r}
+nycDat$lmbvType <- localMoranBV$lmbvType %>% tidyr::replace_na("Insignificant")
+```
+
+```{r}
+ggplot(nycDat) +
+  geom_sf(aes(fill=lmbvType),color = 'lightgrey') +
+  scale_fill_manual(values = c('red','brown','NA','blue','cyan')[1:5], name='Clusters & \nOutliers') +
+  labs(title = "Local Bivariate Moran's I ")
+```
+
+```{r}
+subDat <- nycDat %>% 
+  dplyr::select(ntaname, poptot, UNEMP_RATE, struggling, lmbvType);
+
+mapview::mapview(x = subDat, 
+                 zcol='lmbvType', 
+                 col.regions = c('red','brown','NA','blue','cyan')[1:5])
+```
+
