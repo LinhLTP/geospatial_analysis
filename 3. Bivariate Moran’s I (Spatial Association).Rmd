@@ -72,10 +72,14 @@ nycDat$lmbvType <- localMoranBV$lmbvType %>% tidyr::replace_na("Insignificant")
 ```
 
 ```{r}
-ggplot(nycDat) +
+bv <- ggplot(nycDat) +
   geom_sf(aes(fill=lmbvType),color = 'lightgrey') +
   scale_fill_manual(values = c('red','brown','NA','blue','cyan')[1:5], name='Clusters & \nOutliers') +
   labs(title = "Local Bivariate Moran's I ")
+```
+
+```{r}
+ggsave("./plot/bivariate/Local Bivariate Moran's I.png", plot = bv, width = 10, height = 6, dpi = 300)
 ```
 
 ```{r}
