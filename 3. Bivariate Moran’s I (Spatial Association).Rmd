@@ -9,7 +9,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Objective
 
-Bivariate Moran’s I is used to analyse the **spatial association** between `unemployment rates` and `struggling populations` (low-income groups) in New York City. This helps identify patterns of **socio-economic disparities**.
+Bivariate Moran’s I is used to analyse the spatial association between `unemployment rates` and `struggling populations` (low-income groups) in New York City. This helps identify patterns of **socio-economic disparities**.
 
 ## Global Bivariate Moran’s I: Overall Spatial Association
 
