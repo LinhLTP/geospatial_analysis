@@ -1,0 +1,95 @@
+---
+title: 'spatial weights: Distance Based Weights'
+output: html_document
+---
+
+# TL;DR 
+
+Spatial weights are central components in spatial data analysis. The spatial weights represent the possible spatial interactions between observations in space. rgeoda provides 6 functions to create 4 different types of spatial weights:
+
+- Contiguity Based Weights
++ (1) Contiguity Based Weights: queen_weights(), rook_weights()
+
+- Distance Based Weights
++ (1) Distance Based Weights: distance_weights()
++ (2) K-Nearest Neighbor Weights: knn_weights()
++ (3) Kernel Weights: distance_weights() and knn_weights() with kernel parameters
+
+# Library 
+
+```{r message=FALSE, warning=FALSE}
+library(rgeoda)
+library(sf)
+```
+
+# Load shapefile 
+
+```{r}
+guerry_path <- system.file("extdata", "Guerry.shp", package = "rgeoda")
+guerry <- st_read(guerry_path) # spatial object
+```
+
+# Spatial Weights
+
+## Distance Based Weights
+
+The most straightforward spatial weights matrix constructed from a distance measure is obtained when i and j are considered neighbors whenever j falls within a critical distance band from i. 
+
+Distance-Based Weights assigns weights based on a fixed distance threshold, where regions within the specified distance are considered neighbors, often used for capturing local spatial interactions, or being used when spatial influence is assumed to have a fixed cutoff, such as environmental monitoring where pollutants affect areas within a specific radius.
+
+To start the distance based neighbors, a threshold value must be computed. 'rgeoda' provides a function min_distthreshold helping to find a optimized distance threshold that guarantees that every observation has at least one neighbor. 
+
+```{r}
+dist_thres <- min_distthreshold(guerry)
+dist_thres
+```
+
+```{r}
+dist_w <- distance_weights(guerry, dist_thres)
+summary(dist_w)
+```
+
+## K-Nearest Neighbor Weights
+
+The rule is very obersvation will have exactly k neighbors. It can be used to avoid the problem of isolate in distance-band weights when a smaller cut-off distance is used. 
+
+The method is useful for handling uneven spatial distributions, datasets with varying spatial densities, such as economic networks or social interactions.
+
+```{r}
+# For example, to create a 6-nearest neighbor weights using Guerry:
+knn6_w <- knn_weights(guerry, 6)
+summary(knn6_w)
+```
+
+## Kernel Weights
+
+Kernel weights apply kernel function to determine the distance decay (decreasing of distance) in the derived continuous weights kernel. 
+
+This method applies a kernel function to model distance decay, allowing for a smooth, continuous weighting of spatial relationships rather than binary adjacency. Best for modeling gradual distance decay effects, often used in epidemiology, transportation modeling, and diffusion studies.
+
+Kernel function include:
+- Triangular (hình tam giác)
+- Uniform (đồng nhất)
+- Quadratic (bậc hai)
+- Epanechnikov
+- Quartic (bậc bốn)
+- Gaussian (chuẩn)
+
+```{r}
+# To create a kernel weights with fixed bandwith:
+bandwidth <- min_distthreshold(guerry)
+
+kernel_w <- kernel_weights(guerry, 
+                           bandwidth, 
+                           kernel_method = "uniform")
+summary(kernel_w)
+```
+
+```{r}
+# To create a kernel weights with adaptive bandwidth or using max Knn distance as bandwidth:
+adptkernel_w = kernel_knn_weights(guerry, 
+                                  6, 
+                                  "uniform")
+summary(adptkernel_w)
+```
+
