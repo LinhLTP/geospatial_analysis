@@ -1,0 +1,135 @@
+---
+title: "Geographically Weighted Regression (GWR) Model"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Geographically Weighted Regression
+
+Geographically Weighted Regression (GWR) is a local regression model. It is the term introduced by Fotheringham, Charlton and Brunsdon (1997, 2002) to describe a family of regression models in which the coefficients are allowed to vary spatially. 
+
+# Dataset  
+
+```{r}
+nycDat <- sf::st_read('./data/nyctract_acs/NYC_Tract_ACS2008_12.shp')
+```
+
+```{r}
+sf::st_crs(nycDat) <- 4326
+```
+
+# GWR model 
+
+## Bandwidth Calculation 
+
+```{r}
+nycDatNoNA <- nycDat %>% tidyr::drop_na()
+```
+
+```{r}
+library(car)
+library(GWmodel)
+
+# Check multicollinearity
+vif_vals <- vif(lm(log(popunemplo +1) ~ log(1+popinlabou) +
+                      log(1+onlylessth) + log(1+master) + 
+                      log(1+africaninl) + log(1+asianinlab) + 
+                      log(1+hispanicin) + medianage, 
+                    data = nycDatNoNA))
+
+print(vif_vals) # threshold 10 -> remove 'medianage'
+```
+
+```{r}
+# remove "medianage" and re-run the vif test 
+vif_vals <- vif(lm(log(popunemplo +1) ~ log(1+popinlabou) +
+                      log(1+onlylessth) + log(1+master) + 
+                      log(1+africaninl) + log(1+asianinlab) + 
+                      log(1+hispanicin), 
+                    data = nycDatNoNA))
+
+print(vif_vals)
+```
+
+```{r}
+# Bandwidth 
+bwVal <- GWmodel::bw.gwr(log(popunemplo +1) ~ log(1+popinlabou) +
+                           log(1+onlylessth) + log(1+master) + 
+                           log(1+africaninl) + log(1+asianinlab) + 
+                           log(1+hispanicin),
+                         data = nycDatNoNA %>% sf::as_Spatial(), 
+                         approach = 'AICc', kernel = 'bisquare', 
+                         adaptive = TRUE)
+# note: # The code is using an “adaptive” neighborhood, which is defined as the k nearest neighbors based on Euclidean distances. 
+# But then how do we know how many neighbors we should use for the local regression? Or what is best value for k? GWmodel::bw.gwr can help us search for such an optimal value based on the model fitness. 
+```
+
+## Run basic GWR 
+
+```{r}
+# Basic GWR
+gwr.res <- gwr.basic(log(popunemplo +1) ~ log(1+popinlabou) +
+                           log(1+onlylessth) + log(1+master) + 
+                           log(1+africaninl) + log(1+asianinlab) + 
+                           log(1+hispanicin),
+                         data = nycDatNoNA %>% sf::as_Spatial(), 
+                     bw = bwVal, kernel = "bisquare", adaptive = TRUE)
+print(gwr.res)
+```
+
+While the pseudo-R square values improve a lot from GWR, the most valuable application of GWR outputs is to examine the spatial variations of the estimated model coefficients.
+
+```{r}
+# examine the spatial variations of the estimated model coefficients
+
+# The gwr.res$SDF is a Spatial*DataFrame that contain all the coefficients estimated 
+# at each sptial feature. We can simply map it out as a sp object
+names(gwr.res$SDF)
+
+# The SDF object in the gwr.basic resutls contains:
+# + estimated coefficients
+# + predicted Y calues
+# + coefficient standard errors
+# + t-values. 
+# All these values are organized in a Spatial*DataFrame that can be directly mapped.
+```
+
+## Mapping the result
+
+```{r}
+# Because the spplot cannot handle those unconventional column names, we need to do extra works.
+spGWRData <- gwr.res$SDF@data
+spGWRData$coefMaster <- spGWRData$`log(1 + master)`
+
+# Calculate the p value from (student) t value
+spGWRData$pMaster <- 2*pt(-abs(spGWRData$`log(1 + master)_TV`), df = dim(spGWRData)[1] -1)
+
+spGWRData$coefAfrican <- spGWRData$`log(1 + africaninl)`; 
+spGWRData$coefHighschool <- spGWRData$`log(1 + onlylessth)`
+
+spGWR <- gwr.res$SDF; 
+spGWR@data <- spGWRData;
+```
+
+```{r}
+spplot(spGWR, 'Local_R2', main="Local R Squared")
+```
+
+```{r}
+# This show how the coefficients of the master degree on unemplyment change over space. 
+spplot(spGWR, 'coefMaster', main="Estimated Coefficients of Master Degree on Unemployment")
+```
+
+```{r}
+# But this variable is not signficiant everywhere.
+spplot(spGWR, 'pMaster', main="p-value of Master Degree on Unemployment")
+```
+
+```{r}
+# Another factor of highschool
+spplot(spGWR, 'coefHighschool', main="Estimated Coefficients of Highshcool or Less on Unemployment")
+```
+

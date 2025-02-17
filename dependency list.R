@@ -10,6 +10,8 @@ pacman::p_load(
   tidyverse, # Data manipulation and visualisation functions
   RColorBrewer, # Colour palettes in plots
   gridExtra, # Arranging multiple plots into a grid layout
-  knitr, 
-  spdep
+  ggspatial, # Adding North symbol and Scale bar 
+  knitr,
+  spdep,
+  GWmodel
 )
