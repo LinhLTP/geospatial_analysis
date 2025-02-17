@@ -1,0 +1,243 @@
+---
+title: "Spatial Error Model"
+output: html_document
+---
+
+# Spatial Error Model
+
+The spatial error model handles the spatial autocorrelation in the residuals. The idea is that such errors (residuals from regression) are autocorrelated in that the error from one spatial feature can be modeled as a weighted average of the errors of its neighbors. In other words, such errors have spatial autocorrelation. 
+
+## Dataset  
+
+```{r}
+nycDat <- sf::st_read('./data/nyctract_acs/NYC_Tract_ACS2008_12.shp')
+```
+
+```{r}
+sf::st_crs(nycDat) <- 4326
+```
+
+## Weight matrix (Queen matrix as defaults)
+
+```{r}
+nycNbList <- nycDat %>% 
+  spdep::poly2nb() %>%    # spdep::poly2nb produces neighboring relationships
+  spdep::nb2listw(zero.policy = TRUE) # turns relationships into weights
+```
+
+```{r}
+# view weight matrix (as a List) 
+str(nycNbList)
+View(nycNbList)
+
+nycNbList$style
+nycNbList$neighbours
+nycNbList$weights
+```
+
+## OLS regression 
+
+```{r}
+# Prepare data: covert some factors to numeric values
+nycDat <- nycDat %>% dplyr::mutate(medianage = medianage %>% as.character() %>% as.numeric(),
+                          househol_1 = househol_1 %>% as.character() %>% as.numeric())
+```
+
+```{r}
+# A simple linear regression on unemployed population
+
+olsRslt <- lm(log(popunemplo +1) ~  # using a log-transformed approach to stabilize variance
+                log(1+popinlabou) +
+                log(1+onlylessth) + 
+                log(1+master) + 
+                log(1+africaninl) + 
+                log(1+asianinlab) + 
+                log(1+hispanicin) + 
+                nycDat$medianage,
+              data = nycDat)
+
+summary(olsRslt)
+```
+
+```{r}
+lmResiduals <- rep(0, length(nycDat$popunemplo)) # vector to store the residual
+resIndex <- olsRslt$residuals %>% names() %>% as.integer() 
+lmResiduals[resIndex] <- olsRslt$residuals
+```
+
+```{r}
+# Test if there is spatial autocorrelation in the regression residuals (errors).
+nycNbList %>%
+  spdep::moran.test(lmResiduals, ., zero.policy = TRUE)
+```
+
+```{r}
+# Choropleth Map of OLS Residuals
+
+# Merge OLS residuals with the spatial dataset
+nycDat$ols_residuals <- lmResiduals 
+
+olsplot <- ggplot(nycDat) +
+  geom_sf(aes(fill = ols_residuals), color = "white", size = 0.1) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "OLS Residuals - Spatial Distribution",
+       fill = "Residuals")
+```
+
+```{r}
+ggsave("./plot/sem/ols_plot.png", plot = olsplot, width = 10, height = 6, dpi = 300)
+```
+
+# SEM 
+
+```{r}
+# Use spatialreg::errorsarlm to run the same model
+serrRslt <- spatialreg::errorsarlm(log(popunemplo +1) ~ log(1+popinlabou) +
+                log(1+onlylessth) + log(1+master) + 
+                log(1+africaninl) + log(1+asianinlab) + 
+                log(1+hispanicin) + medianage,
+              data = nycDat,
+              listw = nycNbList,
+              zero.policy = TRUE, 
+              na.action = na.omit);
+
+summary(serrRslt)
+```
+
+```{r}
+# Derive the residuals from the regression
+seResiduals <- rep(0, length(nycDat$popunemplo))
+resIndex <- serrRslt$residuals %>% names() %>% as.integer() 
+seResiduals[resIndex] <- serrRslt$residuals
+```
+
+```{r}
+# Test if there is spatial autocorrelation in the regression residuals (errors).
+nycNbList %>%
+  spdep::moran.test(seResiduals, ., zero.policy = TRUE) # seResiduals
+```
+
+```{r}
+# Choropleth Map of SEM Residuals
+nycDat$sem_residuals <- seResiduals 
+
+seResiduals_plot <- ggplot(nycDat) +
+  geom_sf(aes(fill = sem_residuals), color = "white", size = 0.1) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "SEM Residuals - Spatial Distribution",
+       fill = "Residuals")
+```
+
+```{r}
+ggsave("./plot/sem/seResiduals_plot.png", plot = seResiduals_plot, width = 10, height = 6, dpi = 300)
+```
+
+# Just for fun with maps
+
+```{r}
+# Load required libraries
+library(ggplot2)
+library(sf)
+library(gridExtra)  # For arranging multiple plots
+
+# Merge residuals with spatial dataset
+nycDat$ols_residuals <- lmResiduals 
+nycDat$sem_residuals <- seResiduals 
+
+# Create OLS Residuals Map
+ols_map <- ggplot(nycDat) +
+  geom_sf(aes(fill = ols_residuals), color = "white", size = 0.1) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "OLS Residuals - Spatial Distribution",
+       fill = "Residuals")
+
+# Create SEM Residuals Map
+sem_map <- ggplot(nycDat) +
+  geom_sf(aes(fill = sem_residuals), color = "white", size = 0.1) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "SEM Residuals - Spatial Distribution",
+       fill = "Residuals")
+
+# Arrange maps side by side in a grid (2 columns)
+grid.arrange(ols_map, sem_map, ncol = 2)
+```
+
+```{r}
+# Adding North arrow and Scale bar 
+
+# Check the CRS of your data
+st_crs(nycDat)
+
+# If your data is in degrees (EPSG:4326) and you want a more accurate scale bar, consider transforming it to a projected coordinate system like UTM before plotting
+nycDat <- st_transform(nycDat, crs = 32618)  # Convert to UTM Zone 18N (for NYC)
+
+# Add a scale bar with explicit unit control
+ols_map <- ggplot(nycDat) +
+  geom_sf(aes(fill = ols_residuals_cat), color = "white", size = 0.1) +
+  scale_fill_manual(values = residual_colors) +
+  theme_minimal() +
+  labs(title = "OLS Residuals - Categorized", fill = "Residuals") +
+  annotation_north_arrow(location = "tl", which_north = "true", 
+                         style = north_arrow_fancy_orienteering()) +
+  annotation_scale(location = "br", width_hint = 0.4, 
+                   bar_cols = c("black", "white"), 
+                   unit_category = "metric")  # Ensure metric units
+
+# Print the map
+ols_map
+```
+
+```{r}
+# Function to categorize residuals
+classify_residuals <- function(residuals) {
+  cut(residuals, 
+      breaks = c(-Inf, -2.3, -0.3, 0.0, 0.2, 0.4, Inf),  
+      labels = c("Very Low (< -2.3)", 
+                 "Low (-2.3 to -0.3)", 
+                 "Neutral (-0.3 to 0.0)", 
+                 "High (0.0 to 0.2)", 
+                 "Very High (0.2 to 0.4)", 
+                 "Extremely High (> 0.4)"),
+      include.lowest = TRUE)
+}
+
+# Apply classification to residuals
+nycDat <- nycDat %>%
+  mutate(ols_residuals_cat = classify_residuals(lmResiduals),
+         sem_residuals_cat = classify_residuals(seResiduals))
+
+# Define color scale
+residual_colors <- c("Very Low (< -2.3)" = "red", 
+                     "Low (-2.3 to -0.3)" = "orange",
+                     "Neutral (-0.3 to 0.0)" = "yellow", 
+                     "High (0.0 to 0.2)" = "lightblue", 
+                     "Very High (0.2 to 0.4)" = "blue",
+                     "Extremely High (> 0.4)" = "darkblue")
+
+# Create OLS Residuals Map (Categorized)
+ols_map <- ggplot(nycDat) +
+  geom_sf(aes(fill = ols_residuals_cat), color = "white", size = 0.1) +
+  scale_fill_manual(values = residual_colors) +
+  theme_minimal() +
+  labs(title = "OLS Residuals - Categorized",
+       fill = "Residuals")
+
+# Create SEM Residuals Map (Categorized)
+sem_map <- ggplot(nycDat) +
+  geom_sf(aes(fill = sem_residuals_cat), color = "white", size = 0.1) +
+  scale_fill_manual(values = residual_colors) +
+  theme_minimal() +
+  labs(title = "SEM Residuals - Categorized",
+       fill = "Residuals")
+
+# Arrange maps side by side in a grid (2 columns)
+grid <- grid.arrange(ols_map, sem_map, ncol = 2)
+```
+
+```{r}
+ggsave("./plot/sem/grid_ols_sem.png", plot = grid, width = 10, height = 6, dpi = 300)
+```
