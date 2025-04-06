@@ -1,0 +1,144 @@
+---
+title: "spatio-temporal - data preparation"
+output: html_document
+---
+
+
+For this analyisi, we will use data on:
+1. COVID-19 confirmed cases from 30th January, 2020 to 21st April, 2020 from Public Health England via the GOV.UK dashboard;
+2. resident population characteristics from the 2011 census, available from the Office of National Statistics; and,
+3. 2019 Index of Multiple Deprivation (IMD) data from GOV.UK and published by the Ministry of Housing, Communities & Local Government. The data are at the ONS Upper Tier Local Authority (UTLA) level - also known as Counties and Unitary Authorities.
+
+# Loading Library 
+
+```{r}
+# List of required packages
+packages <- c(
+  "tidyverse", "kableExtra", "sf", "sp", "tmap", "viridis", 
+  "corrplot", "gghighlight", "spacetime", "lubridate", "MASS", 
+  "lmtest", "FRK", "jtools"
+)
+
+# Install any missing packages
+installed <- packages %in% rownames(installed.packages())
+if (any(!installed)) {
+  install.packages(packages[!installed])
+}
+
+# Load packages
+lapply(packages, library, character.only = TRUE)
+
+```
+
+# Data Wrangling 
+
+## Data Preparation 
+
+```{r}
+# read ONS UTLA shapefile
+utla_shp <- st_read("data/spatio-temporal/ons_utla.shp") 
+```
+
+```{r}
+# create table of locations 
+locs <- utla_shp %>% as.data.frame() %>% 
+  dplyr::select(objct, cty19c, ctyu19nm, long, lat, st_rs)
+```
+
+```{r}
+# read time data frame
+time <- read_csv("data/spatio-temporal/reporting_dates.csv")
+```
+
+```{r}
+# read COVID-19 data in long format
+covid19 <- read_csv("data/spatio-temporal/covid19_cases.csv")
+```
+
+```{r}
+# read 2011 census and 2019 Index of Multiple Deprivation (IMD)
+censusimd <- read_csv("data/spatio-temporal/2011census_2019imd_utla.csv")
+```
+
+```{r}
+head(covid19, 3)
+```
+
+```{r}
+head(covid19$date, 5) #check time structure used for reporting covid cases 
+```
+
+```{r}
+# parsing data into a time stamp
+covid19$date <- ymd(covid19$date)
+class(covid19$date)
+```
+
+```{r}
+# separate date variable into day, week, month and year
+covid19$day <- day(covid19$date)
+covid19$week <- week(covid19$date) # week of the year
+covid19$month <- month(covid19$date)
+covid19$year <- year(covid19$date)
+```
+
+## Build a 'spatio-temporal object' of class STIDF using STIDF from the 'spacetime' package
+
+```{r}
+# add spatial information contained in shapefile to create a spatio-temporal data frame
+covid19_spt <- left_join(utla_shp, 
+                         covid19, 
+                         by = c("ctyu19nm" = "Area.name"))
+```
+
+```{r}
+class(covid19_spt)
+```
+
+```{r}
+# identifying spatial fields
+spat_part <- sp::as(
+  dplyr::select(
+    covid19_spt,
+    -c(bng_e, bng_n, Area.code, Area.type, Daily.lab.confirmed.cases,
+       Cumulative.lab.confirmed.cases, date, day, week, month, year)
+  ),
+  Class = "Spatial"
+)
+
+#'as(..., Class = "Spatial")' from 'sp' package was used to convert the selected sf or data.frame object into a Spatial object
+```
+
+```{r}
+# identifying temporal fields
+temp_part <- covid19_spt$date
+
+# identifying data
+covid19_data <- covid19_spt %>%
+  dplyr::select(c(
+    Area.code, Area.type, date, Daily.lab.confirmed.cases,
+    Cumulative.lab.confirmed.cases, day, week, month, year
+  )) %>%
+  as.data.frame()
+```
+
+```{r}
+# construct STIDF object
+covid19_stobj <- STIDF(sp = spat_part, # spatial fields
+                time = temp_part, # time fields
+                data = covid19_data) # data
+                
+class(covid19_stobj)
+```
+
+```{r}
+# Next add census and IMD variables
+
+# select pop data
+pop <- censusimd %>% dplyr::select("UTLA19NM", "Residents", "Longterm_sick_or_disabled") #For the purposes of this analysis, only add total population and long-term sick or disabled population counts
+
+# join dfs
+covid19_spt <- left_join(covid19_spt, pop,
+                         by = c("ctyu19nm" = "UTLA19NM"))
+covid19 <- left_join(covid19, pop, by = c("Area.name" = "UTLA19NM"))
+```
