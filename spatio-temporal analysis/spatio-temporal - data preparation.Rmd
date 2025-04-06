@@ -3,8 +3,8 @@ title: "spatio-temporal - data preparation"
 output: html_document
 ---
 
+Required Data:
 
-For this analyisi, we will use data on:
 1. COVID-19 confirmed cases from 30th January, 2020 to 21st April, 2020 from Public Health England via the GOV.UK dashboard;
 2. resident population characteristics from the 2011 census, available from the Office of National Statistics; and,
 3. 2019 Index of Multiple Deprivation (IMD) data from GOV.UK and published by the Ministry of Housing, Communities & Local Government. The data are at the ONS Upper Tier Local Authority (UTLA) level - also known as Counties and Unitary Authorities.
