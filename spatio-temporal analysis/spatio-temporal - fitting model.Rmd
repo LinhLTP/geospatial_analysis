@@ -1,0 +1,166 @@
+---
+title: "spatio-temporal fitting model"
+output: html_document
+---
+
+# Dependencies 
+
+```{r}
+library(tidyverse)
+library(kableExtra)
+library(sf) 
+library(sp) # spatial object conversion 
+library(tmap) 
+library(viridis) 
+library(corrplot)
+library(gghighlight) # highlight data on plot 
+
+# Analysing spatio-temporal data
+library(spacetime)
+library(lubridate)
+library(MASS) # applied statistics 
+library(lmtest) # statistical test for linear regression model 
+library(FRK) # fit spatial random effect models 
+library(jtools) # Exportable regression tables
+```
+
+# Prepare data
+
+```{r}
+# remove geometries
+st_geometry(covid19_spt) <- NULL
+
+# share of population in long-term illness 
+covid19_spt <- covid19_spt %>% 
+  mutate(lt_illness = Longterm_sick_or_disabled / Residents
+)
+```
+
+# Construct Basic Function
+
+```{r}
+# build basis functions
+G <- auto_basis(data = covid19_spt[,c("long","lat")] %>%
+                       SpatialPoints(),           # To sp obj
+                nres = 1,                         # One resolution
+                type = "Gaussian")                # Gaussian BFs
+```
+
+```{r}
+# basis functions evaluated at data locations are then the covariates
+S <- eval_basis(basis = G,                       
+                s = covid19_spt[,c("long","lat")] %>%
+                     as.matrix()) %>%            
+     as.matrix()                                 
+```
+
+```{r}
+colnames(S) <- paste0("B", 1:ncol(S)) # assign column names
+```
+
+# Add basic function to dataframe
+
+```{r}
+# Prepare a data frame for the regression model
+# adding the weights extracted from the basis functions. These weights enter as covariates in model
+# selecting variables
+reg_df <- cbind(covid19_spt, S) %>%
+  dplyr::select(ctyu19nm, n_covid19_r, long, lat, date, lt_illness, B1:B9)
+```
+
+# Fit linear regression 
+
+```{r}
+eq1 <- n_covid19_r ~ long + lat + date + lt_illness + .
+
+lm_m <- lm(formula = eq1, 
+           data = dplyr::select(reg_df, -ctyu19nm))
+
+lm_m %>% summary()
+```
+
+# Poisson Regression
+
+```{r}
+# A key issue: dependent variable is a count and is highly skewed
+# address challenges by using poisson regression 
+
+# estimate a poisson model
+poisson_m1 <- glm(eq1,
+                family = poisson("log"), # Poisson + log link
+                data = dplyr::select(reg_df, -ctyu19nm))
+poisson_m1 %>% summary()
+```
+
+```{r}
+# Challenges: overdispersion (ratio > 1)
+poisson_m1$deviance / poisson_m1$df.residual
+```
+
+# Quasipoisson Regression
+
+```{r}
+# estimate a quasipoisson model to deal with over-dispersion 
+qpoisson_m1 <- glm(eq1,
+                family = quasipoisson("log"), 
+                data = dplyr::select(reg_df, -ctyu19nm))
+qpoisson_m1 %>% summary()
+```
+
+# Negative Binomial Regression
+
+```{r}
+# alternative solution for overdispersion 
+# estimate a negative binomial model
+nb_m1 <- glm.nb(eq1, 
+       data = dplyr::select(reg_df, -ctyu19nm))
+nb_m1 %>% summary()
+```
+
+# Negative Binomial Regression - Including Interactions
+
+```{r}
+# long + lat + date + long:lat + long:date + lat:date
+# modelling how the impact of space changes over time, and vice versa
+
+# new model specification
+eq2 <- n_covid19_r ~ (long + lat + date)^2 + lt_illness + .
+# estimate a negative binomial model
+nb_m2 <- glm.nb(eq2, 
+       data = dplyr::select(reg_df, -ctyu19nm))
+nb_m2 %>% summary()
+```
+
+# Model comparision 
+
+To get a quick sense of model fit is to explore the correlation between observed and predicted values of the dependent variable
+
+
+```{r}
+# computing predictions for all models
+lm_cnt <- predict(lm_m)
+poisson_cnt <- predict(poisson_m1)
+nb1_cnt <- predict(nb_m1)
+nb2_cnt <- predict(nb_m2)
+
+reg_df <- cbind(reg_df, lm_cnt, poisson_cnt, nb1_cnt, nb2_cnt)
+```
+
+```{r}
+# computing correlation coefficients
+cormat <- cor(reg_df[, c("n_covid19_r", "lm_cnt", "poisson_cnt", "nb1_cnt", "nb2_cnt")], 
+              use="complete.obs", 
+              method="pearson")
+
+# significance test
+sig1 <- corrplot::cor.mtest(reg_df[, c("n_covid19_r", "lm_cnt", "poisson_cnt", "nb1_cnt", "nb2_cnt")],
+                            conf.level = .95)
+
+# create a correlogram
+corrplot::corrplot.mixed(cormat,
+                         number.cex = 1,
+                         tl.pos = "d",
+                         tl.cex = 0.9)
+```
+
+

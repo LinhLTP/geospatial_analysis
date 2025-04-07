@@ -1,0 +1,132 @@
+---
+title: "spatio-temporal - data visualisation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Dependencies 
+
+```{r}
+# Data manipulation, transformation and visualisation
+library(tidyverse)
+# Nice tables
+library(kableExtra)
+# Simple features (a standardised way to encode vector data ie. points, lines, polygons)
+library(sf) 
+# Spatial objects conversion
+library(sp) 
+# Thematic maps
+library(tmap) 
+# Nice colour schemes
+library(viridis) 
+# Obtain correlation coefficients
+library(corrplot)
+# Highlight data on plots
+library(gghighlight)
+# Analysing spatio-temporal data
+#library(STRbook)
+library(spacetime)
+# Date parsing and manipulation
+library(lubridate)
+# Applied statistics
+library(MASS)
+# Statistical tests for linear regression models
+library(lmtest)
+# Fit spatial random effects models
+library(FRK)
+# Exportable regression tables
+library(jtools)
+```
+
+# Create variable to be analysed
+
+- The number of confirmed COVID-19 cases per 100,000 people
+- The cumulative number of confirmed COVID-19 cases per 100,000 people 
+
+```{r}
+# rate of new covid-19 infection
+covid19_spt$n_covid19_r <- round( (covid19_spt$Daily.lab.confirmed.cases / covid19_spt$Residents) * 100000)
+covid19$n_covid19_r <- round( (covid19$Daily.lab.confirmed.cases / covid19$Residents) * 100000 )
+
+# risk of cumulative covid-19 infection
+covid19_spt$c_covid19_r <- round( (covid19_spt$Cumulative.lab.confirmed.cases / covid19_spt$Residents) * 100000)
+covid19$c_covid19_r <- round( (covid19$Cumulative.lab.confirmed.cases / covid19$Residents) * 100000)
+```
+
+# Spatial Plot
+
+- weekly number of confirmed COVID-19 cases per 100,000 people
+
+```{r}
+# create data frame for new cases by week
+daycases_week <- covid19_spt %>% 
+  group_by(week, 
+           ctyu19nm, 
+           as.character(cty19c), 
+           Residents) %>%
+  summarise(n_daycases = sum(Daily.lab.confirmed.cases)) 
+```
+
+```{r}
+# weekly rate of new covid-19 infection
+daycases_week$wn_covid19_r <- (daycases_week$n_daycases / daycases_week$Residents) * 100000
+```
+
+```{r}
+# map
+legend_title = expression("Cumulative Cases per 100,000 Population")
+
+tm_shape(daycases_week) +
+  tm_fill("wn_covid19_r", title = legend_title, palette = magma(256), style ="cont", legend.hist=FALSE, legend.is.portrait=FALSE) +
+  tm_facets(by = "week", ncol = 4) +
+  tm_borders(col = "white", lwd = .1)  + # add borders +
+  tm_layout(bg.color = "white", # change background colour
+            legend.outside = TRUE, # legend outside
+            legend.outside.position = "bottom",
+            legend.stack = "horizontal",
+            legend.title.size = 2,
+            legend.width = 1,
+            legend.height = 1,
+            panel.label.size = 3,
+            main.title = "New COVID-19 Cases by Calendar Week, UTLA, England")
+```
+
+# Time series plot 
+
+```{r}
+tsp <- ggplot(data = covid19_spt,
+            mapping = aes(x = date, y = c_covid19_r,
+                          group = ctyu19nm))
+tsp + geom_line(color = "blue") + 
+    gghighlight(max(c_covid19_r) > 310, use_direct_label = FALSE) +
+    labs(title= paste(" "), x="Date", y="Cumulative Cases per 100,000") +
+    theme_classic() +
+    theme(plot.title=element_text(size = 20)) +
+    theme(axis.text=element_text(size=16)) +
+    theme(axis.title.y = element_text(size = 18)) +
+    theme(axis.title.x = element_text(size = 18)) +
+    theme(plot.subtitle=element_text(size = 16)) +
+    theme(axis.title=element_text(size=20, face="plain")) +
+    facet_wrap(~ ctyu19nm)
+```
+
+# Heatmap (Hovmöller Plots)
+
+```{r}
+ggplot(data = dplyr::filter(covid19_spt, Residents > 260000), 
+           mapping = aes(x= date, y= reorder(ctyu19nm, c_covid19_r), fill= c_covid19_r)) +
+  geom_tile() +
+  scale_fill_viridis(name="New Cases per 100,000", option ="plasma", begin = 0, end = 1, direction = 1) +
+  theme_minimal() + 
+  labs(title= paste(" "), x="Date", y="Upper Tier Authority Area") +
+  theme(legend.position = "bottom") +
+  theme(legend.title = element_text(size=15)) +
+  theme(axis.text.y = element_text(size=10)) +
+  theme(axis.text.x = element_text(size=15)) +
+  theme(axis.title=element_text(size=20, face="plain")) +
+  theme(legend.key.width = unit(5, "cm"), legend.key.height = unit(2, "cm"))
+```
+

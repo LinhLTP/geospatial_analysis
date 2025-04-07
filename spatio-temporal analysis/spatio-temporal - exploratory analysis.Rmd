@@ -1,0 +1,95 @@
+---
+title: "spatio-temporal - exploratory analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Mean
+
+## Empirical Spatial Mean
+
+```{r}
+# compute empirical spatial mean
+sp_av <- covid19_spt %>% group_by(ctyu19nm) %>% # group by spatial unit
+  summarise(sp_mu_emp = mean(n_covid19_r))
+
+# plot empirical spatial mean
+ggplot(data=sp_av) +
+  geom_col( aes( y = reorder(ctyu19nm, sp_mu_emp), x = sp_mu_emp) , fill = "grey50") +
+  theme_classic() +
+  labs(title= paste(" "), x="Average New Cases per 100,000", y="Upper Tier Authority Area") +
+  theme(legend.position = "bottom") +
+  theme(axis.text.y = element_text(size=7)) +
+  theme(axis.text.x = element_text(size=12)) +
+  theme(axis.title=element_text(size=20, face="plain"))
+```
+
+## Empirical Temporal Mean
+
+```{r}
+# compute temporal mean
+tm_av <- covid19 %>% group_by(date) %>%
+  summarise(tm_mu_emp = mean(n_covid19_r))
+
+# plot temporal mean + trends for all spatial units
+ggplot() +
+  geom_line(data = covid19, mapping = aes(x =date, y = n_covid19_r,
+                          group = Area.name), color = "gray80") +
+   theme_classic() +
+  geom_smooth(data = tm_av, mapping = aes(x =date, y = tm_mu_emp), 
+              alpha = 0.5,
+              se = FALSE) +
+    labs(title= paste(" "), x="Date", y="Cumulative Cases per 100,000") +
+    theme_classic() +
+    theme(plot.title=element_text(size = 18)) +
+    theme(axis.text=element_text(size=14)) +
+    theme(axis.title.y = element_text(size = 16)) +
+    theme(axis.title.x = element_text(size = 16)) +
+    theme(plot.subtitle=element_text(size = 16)) +
+    theme(axis.title=element_text(size=18, face="plain"))
+```
+
+# Dependence 
+
+## Spatial dependence 
+- Compute the Moran’s I on the rate of new COVID-19 cases (i.e. n_covid19_r in the covid19 data frame) at multiple time points
+
+## Temporal dependence
+
+Before measuring the temporal dependence is time-series, a time-series object needs to be created with a time stamp and given cycle frequency. 
+- A cycle frequency refers to when a seasonal pattern is repeated. 
+- We consider a time series of the total number of new COVID-19 cases per 100,000 (i.e. we sum cases over UTLAs by day) and the frequency set to 7 to reflect weekly cycles. So we end up with a data frame of length 71.
+
+```{r}
+# create a time series object
+total_cnt <- covid19 %>% 
+  group_by(date) %>%
+  summarise(new_cases = sum(n_covid19_r)) 
+
+total_cases_ts <- ts(total_cnt$new_cases,  
+                     start = 1,
+                     frequency =7)
+# ts() is R Base to creates a regular time series object from a numeric vector
+```
+
+```{r}
+# test temporal autocorrelation
+# compute the correlation coefficient between a time series measured at time t and its lag measured at time t-1
+# create lag term t-1
+lag_new_cases <- total_cnt$new_cases[-1]
+total_cnt <- cbind(total_cnt[1:70,], lag_new_cases)
+cor(total_cnt[,2:3])
+```
+
+## Time series component
+
+```{r}
+# decompose time series
+dec_ts <- decompose(total_cases_ts)
+# plot time series components
+plot(dec_ts)
+```
+
